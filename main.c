@@ -524,10 +524,6 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s: -T depends on -I.\n", argv0);
 		exit(EXIT_FAILURE);
 	}
-	if (opts->mirrorif && !opts->mirrortarget) {
-		fprintf(stderr, "%s: -I depends on -T.\n", argv0);
-		exit(EXIT_FAILURE);
-	}
 #endif /* !WITHOUT_MIRROR */
 	if (!opts->spec) {
 		fprintf(stderr, "%s: no proxyspec specified.\n", argv0);

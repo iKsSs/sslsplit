@@ -383,6 +383,8 @@ static uint8_t content_pcap_src_ether[ETHER_ADDR_LEN] = {
 	0x02, 0x00, 0x00, 0x11, 0x11, 0x11};
 static uint8_t content_pcap_dst_ether[ETHER_ADDR_LEN] = {
 	0x02, 0x00, 0x00, 0x22, 0x22, 0x22};
+static uint8_t content_mirror_dst_ether[ETHER_ADDR_LEN] = {
+    0x02, 0x00, 0x00, 0x00, 0x00, 0xcc};
 #ifndef WITHOUT_MIRROR
 static logger_t *content_mirror_log = NULL;
 static libnet_t *content_mirror_libnet = NULL;
@@ -1347,7 +1349,7 @@ log_content_pcap_prepcb(UNUSED void *fh, unsigned long prepflags,
 
 #ifndef WITHOUT_MIRROR
 static int
-log_content_mirror_preinit(const char *ifname, const char *targetip) {
+log_content_mirror_preinit(const char *ifname, const char *targetip, const int hasTarget) {
 	char errbuf[LIBNET_ERRBUF_SIZE];
 
 	/* cast to char* needed on OpenBSD */
@@ -1366,13 +1368,37 @@ log_content_mirror_preinit(const char *ifname, const char *targetip) {
 		return -1;
 	}
 
-	if (logpkt_ether_lookup(content_mirror_libnet,
-	                        content_mirror_src_ether,
-	                        content_mirror_dst_ether,
-	                        targetip, ifname) == -1) {
-		log_err_printf("Failed to lookup target ether\n");
-		libnet_destroy(content_mirror_libnet);
-		return -1;
+	if ( hasTarget ) {
+		if (logpkt_ether_lookup(content_mirror_libnet,
+								content_mirror_src_ether,
+								content_mirror_dst_ether,
+								targetip, ifname) == -1) {
+			log_err_printf("Failed to lookup target ether\n");
+			libnet_destroy(content_mirror_libnet);
+			return -1;
+		}
+	} else {
+		struct libnet_ether_addr *src_ether_addr;
+
+		src_ether_addr = libnet_get_hwaddr(content_mirror_libnet);
+		if (src_ether_addr == NULL) {
+			log_err_printf("Error getting src ethernet address: %s\n",
+						   libnet_geterror(content_mirror_libnet));
+			libnet_destroy(content_mirror_libnet);
+			return -1;
+		}
+		memcpy(content_mirror_src_ether, src_ether_addr->ether_addr_octet, ETHER_ADDR_LEN);
+		memcpy(content_mirror_dst_ether, &content_mirror_dst_ether, ETHER_ADDR_LEN);
+
+		log_dbg_printf("Mirror ETH src: "
+					   "%02x:%02x:%02x:%02x:%02x:%02x\n",
+					   content_mirror_src_ether[0], content_mirror_src_ether[1], content_mirror_src_ether[2],
+					   content_mirror_src_ether[3], content_mirror_src_ether[4], content_mirror_src_ether[5]);
+
+		log_dbg_printf("Mirror ETH dest: "
+					   "%02x:%02x:%02x:%02x:%02x:%02x\n",
+					   content_mirror_dst_ether[0], content_mirror_dst_ether[1], content_mirror_dst_ether[2],
+					   content_mirror_dst_ether[3], content_mirror_dst_ether[4], content_mirror_dst_ether[5]);
 	}
 
 	return 0;
@@ -1561,7 +1587,8 @@ log_preinit(opts_t *opts)
 #ifndef WITHOUT_MIRROR
 	if (opts->mirrorif) {
 		if (log_content_mirror_preinit(opts->mirrorif,
-		                               opts->mirrortarget) == -1)
+		                               opts->mirrortarget,
+									   (opts->mirrortarget)?1:0) == -1)
 			goto out;
 		reopencb = NULL;
 		opencb = NULL;
